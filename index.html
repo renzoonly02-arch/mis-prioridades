@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Prioridades Operativas</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f4f7f9;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            color: #0F4C81;
+            margin-bottom: 5px;
+            font-size: 2.2em;
+        }
+        p.subtitle {
+            color: #555;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+            text-align: center;
+        }
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 25px;
+            width: 100%;
+            max-width: 1100px;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            padding: 30px 20px;
+            text-align: center;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border-top: 6px solid #3498db;
+        }
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.1);
+        }
+        .card h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.3em;
+        }
+        .card p {
+            margin: 0 0 20px 0;
+            font-size: 0.95em;
+            color: #7f8c8d;
+            line-height: 1.4;
+        }
+        .btn-download {
+            background-color: #0F4C81;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 0.9em;
+            display: inline-block;
+        }
+        .card:hover .btn-download {
+            background-color: #27ae60;
+        }
+        
+        /* Colores diferenciales por tarjeta */
+        .p1 { border-top-color: #e74c3c; } 
+        .p2 { border-top-color: #e67e22; } 
+        .p3 { border-top-color: #f1c40f; } 
+        .p4 { border-top-color: #2ecc71; } 
+        .p5 { border-top-color: #9b59b6; }
+        .p6 { border-top-color: #34495e; }
+
+        .p1 h3 { color: #c0392b; }
+        .p2 h3 { color: #d35400; }
+        .p3 h3 { color: #f39c12; }
+        .p4 h3 { color: #27ae60; }
+        .p5 h3 { color: #8e44ad; }
+        .p6 h3 { color: #2c3e50; }
+    </style>
+</head>
+<body>
+
+    <h1>📌 Panel Interactivo de Documentos</h1>
+    <p class="subtitle">Haz clic en cualquier sección para descargar el paquete de archivos correspondiente</p>
+
+    <div class="grid-container">
+        
+        <a href="./FABRICACIÓN DE ANILLOS.zip" class="card p1">
+            <div>
+                <h3>Fabricación de Anillos</h3>
+                <p>Paquete completo con guías y planos de fabricación de anillos.</p>
+            </div>
+            <span class="btn-download">📥 Descargar ZIP</span>
+        </a>
+
+        <a href="./PRIORIDAD 2.zip" class="card p2">
+            <div>
+                <h3>Prioridad 2</h3>
+                <p>Archivos complementarios y reportes de la segunda prioridad.</p>
+            </div>
+            <span class="btn-download">📥 Descargar ZIP</span>
+        </a>
+
+        <a href="./PRIORIDAD 3.zip" class="card p3">
+            <div>
+                <h3>Prioridad 3</h3>
+                <p>Documentación técnica acumulada en la prioridad 3.</p>
+            </div>
+            <span class="btn-download">📥 Descargar ZIP</span>
+        </a>
+
+        <a href="./PRIORIDAD 4.zip" class="card p4">
+            <div>
+                <h3>Prioridad 4</h3>
+                <p>Formatos de control diario asignados a la prioridad 4.</p>
+            </div>
+            <span class="btn-download">📥 Descargar ZIP</span>
+        </a>
+
+        <a href="./PRIORIDAD 5.zip" class="card p5">
+            <div>
+                <h3>Prioridad 5</h3>
+                <p>Registros históricos e información general de soporte.</p>
+            </div>
+            <span class="btn-download">📥 Descargar ZIP</span>
+        </a>
+
+        <a href="./SERVICIO DE EMBOCINADO Y MECANIZADO D....zip" class="card p6">
+            <div>
+                <h3>Embocinado y Mecanizado</h3>
+                <p>Documentos relacionados al servicio de embocinado y control mecánico.</p>
+            </div>
+            <span class="btn-download">📥 Descargar ZIP</span>
+        </a>
+
+    </div>
+
+</body>
+</html>
