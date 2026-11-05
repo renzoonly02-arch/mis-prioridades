@@ -119,7 +119,7 @@ if st.session_state.ultima_pestana != pestana_seleccionada:
     st.session_state.archivo_activo_zip = None
     st.session_state.ultima_pestana = pestana_seleccionada
 
-# --- ESCANEO DE ARCHIVOS Y RE-CLASSIFICACIÓN DE SUB-CARPETAS ---
+# --- ESCANEO DE ARCHIVOS Y RE-CLASIFICACIÓN DE SUB-CARPETAS ---
 subcarpetas_detectadas = set()
 mapa_archivos_origen = {}
 todos_los_archivos_zip = []
