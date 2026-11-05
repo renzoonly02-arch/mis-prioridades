@@ -1,6 +1,6 @@
 import os
-import streamlit as st
 import zipfile
+import streamlit as st
 import mammoth
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
@@ -57,7 +57,7 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     }
     
-    /* Caja de la Vista Previa (Máxima legibilidad) */
+    /* Caja de la Vista Previa */
     .contenedor-vista-previa {
         background-color: #ffffff !important;
         color: #1e293b !important;
@@ -95,8 +95,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- MAPPING DE BOTONES CON ARCHIVOS COMPRIMIDOS REALES ---
-# La opción de Anillos ahora mapea a una tupla conteniendo ambas partes
+# --- MAPPING DE PRIORIDADES CON SUS ARCHIVOS ZIP ---
 opciones_zip = {
     "🔴 Prioridad 1": ("1parte.zip", "2parte.zip"),
     "🟠 Prioridad 2": ("PRIORIDAD 2.zip",),
@@ -109,20 +108,20 @@ pestanas = list(opciones_zip.keys())
 pestana_seleccionada = st.radio("📁 SELECCIONA LA PRIORIDAD A CONSULTAR:", pestanas, horizontal=True)
 archivos_zip_a_leer = opciones_zip[pestana_seleccionada]
 
-# --- VARIABLES DE MEMORIA DE ESTADO EN SESIÓN ---
+# --- VARIABLES DE MEMORIA EN SESIÓN ---
 if "archivo_activo_zip" not in st.session_state:
     st.session_state.archivo_activo_zip = None
 if "ultima_pestana" not in st.session_state:
     st.session_state.ultima_pestana = pestana_seleccionada
 
-# Si cambiamos de prioridad, reseteamos la memoria de selección activa
+# Si cambiamos de pestaña, limpiamos la selección anterior para evitar conflictos
 if st.session_state.ultima_pestana != pestana_seleccionada:
     st.session_state.archivo_activo_zip = None
     st.session_state.ultima_pestana = pestana_seleccionada
 
-# --- ESCANEO INTELIGENTE MULTI-ZIP Y RE-CLASIFICACIÓN ---
+# --- ESCANEO DE ARCHIVOS Y RE-CLASIFICACIÓN DE SUB-CARPETAS ---
 subcarpetas_detectadas = set()
-mapa_archivos_origen = {} # Diccionario clave: ruta_interna -> valor: archivo_zip_donde_vive
+mapa_archivos_origen = {}
 todos_los_archivos_zip = []
 
 for zip_file_name in archivos_zip_a_leer:
@@ -134,24 +133,23 @@ for zip_file_name in archivos_zip_a_leer:
                         todos_los_archivos_zip.append(f)
                         mapa_archivos_origen[f] = zip_file_name
                         
-                        # Extraer estructura interna para clasificar carpetas
+                        # Extraer estructura de carpetas
                         partes_ruta = f.split('/')
                         if len(partes_ruta) > 1:
                             subcarpeta_nombre = partes_ruta[-2]
                             subcarpetas_detectadas.add(subcarpeta_nombre)
         except Exception as e:
-            st.sidebar.error(f"Error al procesar el archivo {zip_file_name}: {str(e)}")
+            st.sidebar.error(f"Error al procesar {zip_file_name}: {str(e)}")
 
-# Aseguramos un orden alfabético de los documentos
 todos_los_archivos_zip.sort()
 
-# --- 1. PANEL LATERAL IZQUIERDO RE-CLASIFICADO (SIDEBAR) ---
+# --- 1. PANEL LATERAL IZQUIERDO (SIDEBAR) ---
 with st.sidebar:
     st.markdown("<h2 style='text-align:center; margin-bottom:0;'>CARVIMSA</h2>", unsafe_allow_html=True)
     st.markdown("<p style='font-size:12px; color:#94a3b8; text-align:center; margin-top:0;'>GRUPO COMECA - PERÚ</p>", unsafe_allow_html=True)
     st.write("---")
     
-    # Clasificador dinámico de subcarpetas (detectará las carpetas combinadas de parte 1 y parte 2)
+    # Filtro de subcarpetas dinámicas
     if subcarpetas_detectadas:
         lista_carpetas_sidebar = ["📁 Ver todas las carpetas"] + sorted(list(subcarpetas_detectadas))
         carpeta_seleccionada = st.selectbox("📂 Clasificación por subcarpetas:", lista_carpetas_sidebar)
@@ -168,7 +166,7 @@ with st.sidebar:
     else:
         archivos_filtrados = todos_los_archivos_zip
         
-    # Filtro 2: Por Buscador de texto
+    # Filtro 2: Por Caja de Texto
     if buscar:
         archivos_mostrar = [f for f in archivos_filtrados if buscar.strip().lower() in os.path.basename(f).lower()]
     else:
@@ -176,7 +174,7 @@ with st.sidebar:
 
     st.markdown(f"### 📂 DOCUMENTOS ENCONTRADOS ({len(archivos_mostrar)})")
     
-    # Selección automática inicial segura si la memoria se limpia
+    # Auto-selección inicial de seguridad
     if archivos_mostrar and st.session_state.archivo_activo_zip not in archivos_mostrar:
         st.session_state.archivo_activo_zip = archivos_mostrar[0]
         
@@ -200,14 +198,13 @@ if st.session_state.archivo_activo_zip:
     archivo_actual = st.session_state.archivo_activo_zip
     nombre_limpio_pantalla = os.path.basename(archivo_actual)
     
-    # Determinar dinámicamente de qué ZIP viene y a qué subcarpeta pertenece
     zip_origen = mapa_archivos_origen.get(archivo_actual)
     partes_de_ruta = archivo_actual.split('/')
     subcarpeta_origen = partes_de_ruta[-2] if len(partes_de_ruta) > 1 else "Raíz principal"
     
     st.markdown(f"<h3 style='color: #38bdf8;'>👁️ Vista Previa Activa: <span style='color: white;'>{nombre_limpio_pantalla}</span> <br><span style='font-size: 13px; color: #94a3b8;'>(Origen: 🗜️ {zip_origen} • Ubicación: 📁 {subcarpeta_origen})</span></h3>", unsafe_allow_html=True)
     
-    # --- PROCESAR CON MAMMOTH DESDE EL ZIP CORRESPONDIENTE ---
+    # --- LECTURA EXTRACTORA CON MAMMOTH VIRTUAL ---
     if zip_origen and os.path.exists(zip_origen):
         try:
             with zipfile.ZipFile(zip_origen, 'r') as z:
@@ -230,3 +227,14 @@ if st.session_state.archivo_activo_zip:
                     
                     st.markdown(f"""
                         <div class="contenedor-vista-previa">
+                            {html_contenido}
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+        except Exception as err_lectura:
+            st.error(f"No se pudo cargar la vista previa con Mammoth: {str(err_lectura)}")
+else:
+    if not todos_los_archivos_zip:
+        st.error(f"❌ No se detectan archivos de Word (.docx) dentro de los paquetes asignados.")
+    else:
+  
