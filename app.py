@@ -95,60 +95,91 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 1. SELECCIÓN DE PESTAÑA DE PRIORIDAD ---
-# Definición de mapeo entre pestañas y los archivos ZIP reales que ya tienes arriba
+# --- MAPPING DE BOTONES CON ARCHIVOS COMPRIMIDOS REALES ---
+# La opción de Anillos ahora mapea a una tupla conteniendo ambas partes
 opciones_zip = {
-    "🔴 Anillos": "FABRICACIÓN DE ANILLOS.zip",
-    "🟠 Prioridad 2": "PRIORIDAD 2.zip",
-    "🟡 Prioridad 3": "PRIORIDAD 3.zip",
-    "🟢 Prioridad 4": "PRIORIDAD 4.zip",
-    "🟣 Prioridad 5": "PRIORIDAD 5.zip",
-    "⚙️ Mecanizado": "SERVICIO DE EMBOCINADO Y MECANIZADO D....zip"
+    "🔴 Prioridad 1": ("1parte.zip", "2parte.zip"),
+    "🟠 Prioridad 2": ("PRIORIDAD 2.zip",),
+    "🟡 Prioridad 3": ("PRIORIDAD 3.zip",),
+    "🟢 Prioridad 4": ("PRIORIDAD 4.zip",),
+    "🟣 Prioridad 5": ("PRIORIDAD 5.zip",)
 }
 
 pestanas = list(opciones_zip.keys())
 pestana_seleccionada = st.radio("📁 SELECCIONA LA PRIORIDAD A CONSULTAR:", pestanas, horizontal=True)
-archivo_zip_actual = opciones_zip[pestana_seleccionada]
+archivos_zip_a_leer = opciones_zip[pestana_seleccionada]
 
-# --- VARIABLES DE MEMORIA EN SESIÓN ---
+# --- VARIABLES DE MEMORIA DE ESTADO EN SESIÓN ---
 if "archivo_activo_zip" not in st.session_state:
     st.session_state.archivo_activo_zip = None
+if "ultima_pestana" not in st.session_state:
+    st.session_state.ultima_pestana = pestana_seleccionada
 
-# --- OBTENER LOS ARCHIVOS DEL ZIP SELECCIONADO ---
-archivos_disponibles = []
-if os.path.exists(archivo_zip_actual):
-    try:
-        with zipfile.ZipFile(archivo_zip_actual, 'r') as z:
-            # Extrae todos los documentos de Word ignorando archivos temporales basura de Mac o Windows
-            archivos_disponibles = [
-                f for f in z.namelist() 
-                if f.lower().endswith('.docx') and not f.startswith('__MACOSX') and not os.path.basename(f).startswith('.') and not os.path.basename(f).startswith('~$')
-            ]
-            archivos_disponibles.sort()
-            
-            # Si cambiamos de pestaña o no hay archivo activo, selecciona el primero
-            if archivos_disponibles:
-                if st.session_state.archivo_activo_zip not in archivos_disponibles:
-                    st.session_state.archivo_activo_zip = archivos_disponibles[0]
-    except Exception as e:
-        st.sidebar.error(f"Error al abrir el paquete ZIP: {str(e)}")
+# Si cambiamos de prioridad, reseteamos la memoria de selección activa
+if st.session_state.ultima_pestana != pestana_seleccionada:
+    st.session_state.archivo_activo_zip = None
+    st.session_state.ultima_pestana = pestana_seleccionada
 
-# --- 2. PANEL LATERAL IZQUIERDO (SIDEBAR) ---
+# --- ESCANEO INTELIGENTE MULTI-ZIP Y RE-CLASIFICACIÓN ---
+subcarpetas_detectadas = set()
+mapa_archivos_origen = {} # Diccionario clave: ruta_interna -> valor: archivo_zip_donde_vive
+todos_los_archivos_zip = []
+
+for zip_file_name in archivos_zip_a_leer:
+    if os.path.exists(zip_file_name):
+        try:
+            with zipfile.ZipFile(zip_file_name, 'r') as z:
+                for f in z.namelist():
+                    if f.lower().endswith('.docx') and not f.startswith('__MACOSX') and not os.path.basename(f).startswith('.') and not os.path.basename(f).startswith('~$'):
+                        todos_los_archivos_zip.append(f)
+                        mapa_archivos_origen[f] = zip_file_name
+                        
+                        # Extraer estructura interna para clasificar carpetas
+                        partes_ruta = f.split('/')
+                        if len(partes_ruta) > 1:
+                            subcarpeta_nombre = partes_ruta[-2]
+                            subcarpetas_detectadas.add(subcarpeta_nombre)
+        except Exception as e:
+            st.sidebar.error(f"Error al procesar el archivo {zip_file_name}: {str(e)}")
+
+# Aseguramos un orden alfabético de los documentos
+todos_los_archivos_zip.sort()
+
+# --- 1. PANEL LATERAL IZQUIERDO RE-CLASIFICADO (SIDEBAR) ---
 with st.sidebar:
     st.markdown("<h2 style='text-align:center; margin-bottom:0;'>CARVIMSA</h2>", unsafe_allow_html=True)
     st.markdown("<p style='font-size:12px; color:#94a3b8; text-align:center; margin-top:0;'>GRUPO COMECA - PERÚ</p>", unsafe_allow_html=True)
     st.write("---")
     
-    buscar = st.text_input("🔍 Filtrar archivos de la lista:", placeholder="Escribe aquí para buscar...")
+    # Clasificador dinámico de subcarpetas (detectará las carpetas combinadas de parte 1 y parte 2)
+    if subcarpetas_detectadas:
+        lista_carpetas_sidebar = ["📁 Ver todas las carpetas"] + sorted(list(subcarpetas_detectadas))
+        carpeta_seleccionada = st.selectbox("📂 Clasificación por subcarpetas:", lista_carpetas_sidebar)
+    else:
+        carpeta_seleccionada = "📁 Ver todas las carpetas"
+        
+    st.write("---")
+    buscar = st.text_input("🔍 Filtrar por nombre en esta lista:", placeholder="Escribe aquí para buscar...")
     st.write("---")
     
-    if buscar:
-        archivos_mostrar = [f for f in archivos_disponibles if buscar.strip().lower() in f.lower()]
+    # Filtro 1: Por Subcarpeta
+    if carpeta_seleccionada != "📁 Ver todas las carpetas":
+        archivos_filtrados = [f for f in todos_los_archivos_zip if len(f.split('/')) > 1 and f.split('/')[-2] == carpeta_seleccionada]
     else:
-        archivos_mostrar = archivos_disponibles
+        archivos_filtrados = todos_los_archivos_zip
+        
+    # Filtro 2: Por Buscador de texto
+    if buscar:
+        archivos_mostrar = [f for f in archivos_filtrados if buscar.strip().lower() in os.path.basename(f).lower()]
+    else:
+        archivos_mostrar = archivos_filtrados
 
-    st.markdown(f"### 📂 DOCUMENTOS ({len(archivos_mostrar)})")
+    st.markdown(f"### 📂 DOCUMENTOS ENCONTRADOS ({len(archivos_mostrar)})")
     
+    # Selección automática inicial segura si la memoria se limpia
+    if archivos_mostrar and st.session_state.archivo_activo_zip not in archivos_mostrar:
+        st.session_state.archivo_activo_zip = archivos_mostrar[0]
+        
     for f_path in archivos_mostrar:
         f_name_clean = os.path.basename(f_path)
         marca = "▶️ " if f_path == st.session_state.archivo_activo_zip else "📄 "
@@ -156,7 +187,7 @@ with st.sidebar:
             st.session_state.archivo_activo_zip = f_path
             st.rerun()
 
-# --- 3. ÁREA PRINCIPAL (PANEL DE VISTA PREVIA) ---
+# --- 2. ÁREA PRINCIPAL (PANEL DE VISTA PREVIA) ---
 st.markdown("""
     <div class="banner-principal">
         <span style="background-color:#ffffff; color:#0077b6; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:bold;">📌 CATÁLOGO DE PLANTA • VISTA PREVIA</span>
@@ -165,44 +196,37 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-if st.session_state.archivo_activo_zip and os.path.exists(archivo_zip_actual):
+if st.session_state.archivo_activo_zip:
     archivo_actual = st.session_state.archivo_activo_zip
     nombre_limpio_pantalla = os.path.basename(archivo_actual)
     
-    st.markdown(f"<h3 style='color: #38bdf8;'>👁️ Vista Previa Activa: <span style='color: white;'>{nombre_limpio_pantalla}</span></h3>", unsafe_allow_html=True)
+    # Determinar dinámicamente de qué ZIP viene y a qué subcarpeta pertenece
+    zip_origen = mapa_archivos_origen.get(archivo_actual)
+    partes_de_ruta = archivo_actual.split('/')
+    subcarpeta_origen = partes_de_ruta[-2] if len(partes_de_ruta) > 1 else "Raíz principal"
     
-    # --- PROCESAR CON MAMMOTH DESDE LA MEMORIA VIRTUAL DEL ZIP ---
-    try:
-        with zipfile.ZipFile(archivo_zip_actual, 'r') as z:
-            with z.open(archivo_actual) as docx_file:
-                # El truco: mammoth lee los bytes crudos directamente de la descompresión en memoria
-                resultado = mammoth.convert_to_html(docx_file, ignore_empty_paragraphs=True)
-                html_contenido = resultado.value
-                
-                # Formatear subniveles de listas conflictivas
-                html_contenido = html_contenido.replace("<li>1. ", "<li style='list-style-type: none; margin-left: -15px;'>🔹 <b>")
-                
-                if not html_contenido.strip():
-                    html_contenido = "<p style='color: #64748b; font-style: italic;'>El documento seleccionado está vacío o no contiene texto legible.</p>"
-                
-                # Botón opcional de descarga por si el usuario desea guardarse el original
-                st.download_button(
-                    label="📥 Descargar Word original",
-                    data=z.read(archivo_actual),
-                    file_name=nombre_limpio_pantalla,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-                
-                st.markdown(f"""
-                    <div class="contenedor-vista-previa">
-                        {html_contenido}
-                    </div>
-                """, unsafe_allow_html=True)
-                
-    except Exception as err_lectura:
-        st.error(f"No se pudo cargar la vista previa con Mammoth: {str(err_lectura)}")
-else:
-    if not archivos_disponibles:
-        st.error(f"❌ No se detectan archivos de Word (.docx) dentro del paquete '{archivo_zip_actual}'.")
-    else:
-        st.info("👈 Selecciona un archivo de la lista lateral izquierda para ver su contenido.")
+    st.markdown(f"<h3 style='color: #38bdf8;'>👁️ Vista Previa Activa: <span style='color: white;'>{nombre_limpio_pantalla}</span> <br><span style='font-size: 13px; color: #94a3b8;'>(Origen: 🗜️ {zip_origen} • Ubicación: 📁 {subcarpeta_origen})</span></h3>", unsafe_allow_html=True)
+    
+    # --- PROCESAR CON MAMMOTH DESDE EL ZIP CORRESPONDIENTE ---
+    if zip_origen and os.path.exists(zip_origen):
+        try:
+            with zipfile.ZipFile(zip_origen, 'r') as z:
+                with z.open(archivo_actual) as docx_file:
+                    resultado = mammoth.convert_to_html(docx_file, ignore_empty_paragraphs=True)
+                    html_contenido = resultado.value
+                    
+                    html_contenido = html_contenido.replace("<li>1. ", "<li style='list-style-type: none; margin-left: -15px;'>🔹 <b>")
+                    
+                    if not html_contenido.strip():
+                        html_contenido = "<p style='color: #64748b; font-style: italic;'>El documento seleccionado está vacío o no contiene texto legible.</p>"
+                    
+                    st.download_button(
+                        label="📥 Descargar Word original",
+                        data=z.read(archivo_actual),
+                        file_name=nombre_limpio_pantalla,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"dl_main_{archivo_actual}"
+                    )
+                    
+                    st.markdown(f"""
+                        <div class="contenedor-vista-previa">
