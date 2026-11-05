@@ -1,150 +1,208 @@
-import streamlit as st
 import os
+import streamlit as st
 import zipfile
-import base64
-import xml.etree.ElementTree as ET
+import mammoth
 
+# --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Visor Dual de Documentos",
-    page_icon="📌",
-    layout="wide"
+    page_title="CARVIMSA - PLANTA MOLINO",
+    page_icon="🏭",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Estilos corporativos profesionales con fondos limpios
+# --- ESTILOS CSS REFORZADOS (ESTILO CARVIMSA ORIGINAL) ---
 st.markdown("""
     <style>
-    .main-title { color: #0F4C81; font-family: sans-serif; font-weight: bold; text-align: center; margin-bottom: 5px; }
-    .subtitle { color: #555555; text-align: center; font-size: 1rem; margin-bottom: 25px; }
-    .viewer-title { background-color: #F4F7F9; padding: 10px; border-radius: 6px; border-left: 5px solid #0F4C81; font-weight: bold; font-size: 1.1rem; color: #1C3D5A; margin-bottom: 15px; }
-    .word-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.95rem; }
-    .word-table td, .word-table th { border: 1px solid #CBD5E1; padding: 10px; vertical-align: top; }
-    .word-table th { background-color: #F8FAFC; font-weight: bold; }
-    .document-body { background-color: #ffffff; padding: 30px; border-radius: 8px; border: 1px solid #E2E8F0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); font-family: 'Segoe UI', Arial, sans-serif; color: #2D3748; line-height: 1.7; overflow-y: auto; max-height: 750px; }
-    .document-body h1 { color: #1A202C; font-size: 1.4rem; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px; margin-bottom: 15px; text-transform: uppercase; font-weight: bold; }
+    /* Fondo general azul oscuro de CARVIMSA */
+    .stApp {
+        background-color: #0d1b2a !important;
+        color: #ffffff !important;
+    }
+    /* Panel Lateral Izquierdo */
+    [data-testid="stSidebar"] {
+        background-color: #1b263b !important;
+        border-right: 1px solid #415a77;
+    }
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] label {
+        color: #ffffff !important;
+    }
+    
+    /* Estilo para los botones de la lista de archivos */
+    .stButton > button {
+        background-color: #1e293b !important;
+        color: #e2e8f0 !important;
+        border: 1px solid #415a77 !important;
+        text-align: left !important;
+        display: block !important;
+        width: 100% !important;
+        padding: 10px !important;
+        font-size: 13px !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        border-radius: 6px !important;
+    }
+    .stButton > button:hover {
+        border-color: #38bdf8 !important;
+        background-color: #0f172a !important;
+        color: #38bdf8 !important;
+    }
+    
+    /* Banner Superior Azul */
+    .banner-principal {
+        background: linear-gradient(135deg, #0077b6, #0096c7);
+        padding: 25px;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    /* Caja de la Vista Previa (Máxima legibilidad) */
+    .contenedor-vista-previa {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        padding: 30px;
+        border-radius: 10px;
+        border: 3px solid #0077b6;
+        min-height: 500px;
+        font-family: 'Segoe UI', sans-serif;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        margin-top: 15px;
+        overflow-y: auto;
+        max-height: 750px;
+    }
+    .contenedor-vista-previa h1, .contenedor-vista-previa h2, .contenedor-vista-previa h3 {
+        color: #0f172a !important;
+        border-bottom: 2px solid #cbd5e1;
+        padding-bottom: 8px;
+        margin-top: 15px;
+    }
+    .contenedor-vista-previa p, .contenedor-vista-previa li, .contenedor-vista-previa td, .contenedor-vista-previa tr {
+        font-size: 16px !important;
+        line-height: 1.6 !important;
+        color: #1e293b !important;
+    }
+    .contenedor-vista-previa table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 15px;
+    }
+    .contenedor-vista-previa th, .contenedor-vista-previa td {
+        border: 1px solid #cbd5e1;
+        padding: 8px;
+        text-align: left;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<h1 class="main-title">📌 Panel Interactivo Dual</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Visualiza tus documentos de Word y PDF de forma simultánea en la misma pantalla</p>', unsafe_allow_html=True)
+# --- 1. SELECCIÓN DE PESTAÑA DE PRIORIDAD ---
+# Definición de mapeo entre pestañas y los archivos ZIP reales que ya tienes arriba
+opciones_zip = {
+    "🔴 Anillos": "FABRICACIÓN DE ANILLOS.zip",
+    "🟠 Prioridad 2": "PRIORIDAD 2.zip",
+    "🟡 Prioridad 3": "PRIORIDAD 3.zip",
+    "🟢 Prioridad 4": "PRIORIDAD 4.zip",
+    "🟣 Prioridad 5": "PRIORIDAD 5.zip",
+    "⚙️ Mecanizado": "SERVICIO DE EMBOCINADO Y MECANIZADO D....zip"
+}
 
-# Lector XML avanzado para extraer textos y tablas de Word (.docx)
-def convertir_docx_a_html_nativo(datos_bytes):
+pestanas = list(opciones_zip.keys())
+pestana_seleccionada = st.radio("📁 SELECCIONA LA PRIORIDAD A CONSULTAR:", pestanas, horizontal=True)
+archivo_zip_actual = opciones_zip[pestana_seleccionada]
+
+# --- VARIABLES DE MEMORIA EN SESIÓN ---
+if "archivo_activo_zip" not in st.session_state:
+    st.session_state.archivo_activo_zip = None
+
+# --- OBTENER LOS ARCHIVOS DEL ZIP SELECCIONADO ---
+archivos_disponibles = []
+if os.path.exists(archivo_zip_actual):
     try:
-        from io import BytesIO
-        with zipfile.ZipFile(BytesIO(datos_bytes)) as docx_zip:
-            xml_content = docx_zip.read('word/document.xml')
-            root = ET.fromstring(xml_content)
-            namespaces = {'w': 'http://openxmlformats.org'}
-            html_output = []
-            body = root.find('.//w:body', namespaces)
-            if body is not None:
-                for el in body:
-                    if el.tag.endswith('p'):
-                        textos_parrafo = [t.text for t in el.findall('.//w:t', namespaces) if t.text]
-                        texto_completo = "".join(textos_parrafo).strip()
-                        if texto_completo:
-                            if len(texto_completo) < 120 and (texto_completo.isupper() or "SERVICIO" in texto_completo or "MANTENIMIENTO" in texto_completo or "FABRICACIÓN" in texto_completo or "COT" in texto_completo):
-                                html_output.append(f"<h1>{texto_completo}</h1>")
-                            else:
-                                html_output.append(f"<p>{texto_completo}</p>")
-                    elif el.tag.endswith('tbl'):
-                        html_output.append('<table class="word-table">')
-                        for row in el.findall('.//w:tr', namespaces):
-                            html_output.append('<tr>')
-                            for cell in row.findall('.//w:tc', namespaces):
-                                textos_celda = [t.text for t in cell.findall('.//w:t', namespaces) if t.text]
-                                html_output.append(f'<td>{"".join(textos_celda).strip()}</td>')
-                            html_output.append('</tr>')
-                        html_output.append('</table>')
-            return "".join(html_output) if html_output else "<p style='color: #718096; font-style: italic;'>Este archivo no contiene párrafos de texto plano o tablas editables estándar (podría contener solo imágenes pegadas).</p>"
+        with zipfile.ZipFile(archivo_zip_actual, 'r') as z:
+            # Extrae todos los documentos de Word ignorando archivos temporales basura de Mac o Windows
+            archivos_disponibles = [
+                f for f in z.namelist() 
+                if f.lower().endswith('.docx') and not f.startswith('__MACOSX') and not os.path.basename(f).startswith('.') and not os.path.basename(f).startswith('~$')
+            ]
+            archivos_disponibles.sort()
+            
+            # Si cambiamos de pestaña o no hay archivo activo, selecciona el primero
+            if archivos_disponibles:
+                if st.session_state.archivo_activo_zip not in archivos_disponibles:
+                    st.session_state.archivo_activo_zip = archivos_disponibles[0]
     except Exception as e:
-        return f"<p style='color:red;'>Error al procesar el archivo Word internamente: {e}</p>"
+        st.sidebar.error(f"Error al abrir el paquete ZIP: {str(e)}")
 
-# Visor de PDFs optimizado usando el componente HTML dinámico de Streamlit
-def mostrar_pdf_seguro(datos_bytes):
-    try:
-        base64_pdf = base64.b64encode(datos_bytes).decode('utf-8')
-        pdf_html = f"""
-            <iframe src="data:application/pdf;base64,{base64_pdf}" 
-                    width="100%" height="730px" 
-                    style="border:none; border-radius:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);" 
-                    allowfullscreen>
-            </iframe>
-        """
-        st.components.v1.html(pdf_html, height=750, scrolling=False)
-    except Exception as e:
-        st.error(f"Error al proyectar el PDF: {e}")
-
-def explorar_y_renderizar_dual(nombre_zip, titulo_seccion, clave_unica):
-    if os.path.exists(nombre_zip):
-        try:
-            with zipfile.ZipFile(nombre_zip, 'r') as z:
-                # Filtrar solo archivos verdaderos ignorando carpetas del sistema Mac o basura oculta
-                lista_archivos = [f for f in z.namelist() if not f.endswith('/') and not f.startswith('__MACOSX') and not os.path.basename(f).startswith('.')]
-                
-                if lista_archivos:
-                    col_sel_word, col_sel_pdf = st.columns(2)
-                    
-                    with col_sel_word:
-                        archivos_word = [f for f in lista_archivos if f.lower().endswith('.docx')]
-                        # Formateamos el menú para que muestre una visualización más cómoda del nombre del archivo largo
-                        word_seleccionado = st.selectbox(
-                            "📝 Selecciona el documento WORD:", 
-                            ["-- Seleccionar Word --"] + archivos_word, 
-                            key=f"w_{clave_unica}",
-                            format_func=lambda x: os.path.basename(x) if x != "-- Seleccionar Word --" else x
-                        )
-                    
-                    with col_sel_pdf:
-                        archivos_pdf = [f for f in lista_archivos if f.lower().endswith('.pdf')]
-                        pdf_seleccionado = st.selectbox(
-                            "📄 Selecciona el documento PDF:", 
-                            ["-- Seleccionar PDF --"] + archivos_pdf, 
-                            key=f"p_{clave_unica}",
-                            format_func=lambda x: os.path.basename(x) if x != "-- Seleccionar PDF --" else x
-                        )
-                    
-                    col_visor_word, col_visor_pdf = st.columns(2)
-                    
-                    # Columna Izquierda: Visor del Word
-                    with col_visor_word:
-                        st.markdown('<div class="viewer-title">👁️ Vista Previa del Word</div>', unsafe_allow_html=True)
-                        if word_seleccionado != "-- Seleccionar Word --":
-                            with z.open(word_seleccionado) as f_word:
-                                html_word = convertir_docx_a_html_nativo(f_word.read())
-                            st.markdown(f'<div class="document-body">{html_word}</div>', unsafe_allow_html=True)
-                            
-                            # Agregamos botón de descarga por si quieren conservar el original
-                            st.download_button("📥 Descargar Word original", z.read(word_seleccionado), file_name=os.path.basename(word_seleccionado), key=f"dl_w_{clave_unica}")
-                        else:
-                            st.info("Selecciona un archivo Word en el menú de arriba para leerlo aquí.")
-                            
-                    # Columna Derecha: Visor del PDF
-                    with col_visor_pdf:
-                        st.markdown('<div class="viewer-title">👁️ Vista Previa del PDF</div>', unsafe_allow_html=True)
-                        if pdf_seleccionado != "-- Seleccionar PDF --":
-                            with z.open(pdf_seleccionado) as f_pdf:
-                                mostrar_pdf_seguro(f_pdf.read())
-                                
-                            # Agregamos botón de descarga por si quieren conservar el original
-                            st.download_button("📥 Descargar PDF original", z.read(pdf_seleccionado), file_name=os.path.basename(pdf_seleccionado), key=f"dl_p_{clave_unica}")
-                        else:
-                            st.info("Selecciona un archivo PDF en el menú de arriba para proyectarlo aquí.")
-                else:
-                    st.info("El archivo comprimido está vacío.")
-        except Exception as e:
-            st.error(f"Error al abrir el paquete comprimido: {e}")
+# --- 2. PANEL LATERAL IZQUIERDO (SIDEBAR) ---
+with st.sidebar:
+    st.markdown("<h2 style='text-align:center; margin-bottom:0;'>CARVIMSA</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size:12px; color:#94a3b8; text-align:center; margin-top:0;'>GRUPO COMECA - PERÚ</p>", unsafe_allow_html=True)
+    st.write("---")
+    
+    buscar = st.text_input("🔍 Filtrar archivos de la lista:", placeholder="Escribe aquí para buscar...")
+    st.write("---")
+    
+    if buscar:
+        archivos_mostrar = [f for f in archivos_disponibles if buscar.strip().lower() in f.lower()]
     else:
-        st.error(f"El paquete '{nombre_zip}' no está disponible.")
+        archivos_mostrar = archivos_disponibles
 
-# Estructura de Pestañas Principales por áreas de prioridad
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "🔴 Anillos", "🟠 Prioridad 2", "🟡 Prioridad 3", "🟢 Prioridad 4", "🟣 Prioridad 5", "⚙️ Mecanizado"
-])
+    st.markdown(f"### 📂 DOCUMENTOS ({len(archivos_mostrar)})")
+    
+    for f_path in archivos_mostrar:
+        f_name_clean = os.path.basename(f_path)
+        marca = "▶️ " if f_path == st.session_state.archivo_activo_zip else "📄 "
+        if st.button(f"{marca}{f_name_clean}", key=f"btn_lista_{f_path}", use_container_width=True):
+            st.session_state.archivo_activo_zip = f_path
+            st.rerun()
 
-with tab1: explorar_y_renderizar_dual("FABRICACIÓN DE ANILLOS.zip", "Fabricación de Anillos", "p1")
-with tab2: explorar_y_renderizar_dual("PRIORIDAD 2.zip", "Prioridad 2", "p2")
-with tab3: explorar_y_renderizar_dual("PRIORIDAD 3.zip", "Prioridad 3", "p3")
-with tab4: explorar_y_renderizar_dual("PRIORIDAD 4.zip", "Prioridad 4", "p4")
-with tab5: explorar_y_renderizar_dual("PRIORIDAD 5.zip", "Prioridad 5", "p5")
-with tab6: explorar_y_renderizar_dual("SERVICIO DE EMBOCINADO Y MECANIZADO D....zip", "Embocinado y Mecanizado", "p6")
+# --- 3. ÁREA PRINCIPAL (PANEL DE VISTA PREVIA) ---
+st.markdown("""
+    <div class="banner-principal">
+        <span style="background-color:#ffffff; color:#0077b6; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:bold;">📌 CATÁLOGO DE PLANTA • VISTA PREVIA</span>
+        <h1 style="color:white; margin-top:10px; margin-bottom:0; font-size:32px;">CARVIMSA - PLANTA MOLINO</h1>
+        <p style="color:#e0e1dd; margin-top:5px; font-size:14px;">Consulta en tiempo real de documentos técnicos en pantalla.</p>
+    </div>
+""", unsafe_allow_html=True)
+
+if st.session_state.archivo_activo_zip and os.path.exists(archivo_zip_actual):
+    archivo_actual = st.session_state.archivo_activo_zip
+    nombre_limpio_pantalla = os.path.basename(archivo_actual)
+    
+    st.markdown(f"<h3 style='color: #38bdf8;'>👁️ Vista Previa Activa: <span style='color: white;'>{nombre_limpio_pantalla}</span></h3>", unsafe_allow_html=True)
+    
+    # --- PROCESAR CON MAMMOTH DESDE LA MEMORIA VIRTUAL DEL ZIP ---
+    try:
+        with zipfile.ZipFile(archivo_zip_actual, 'r') as z:
+            with z.open(archivo_actual) as docx_file:
+                # El truco: mammoth lee los bytes crudos directamente de la descompresión en memoria
+                resultado = mammoth.convert_to_html(docx_file, ignore_empty_paragraphs=True)
+                html_contenido = resultado.value
+                
+                # Formatear subniveles de listas conflictivas
+                html_contenido = html_contenido.replace("<li>1. ", "<li style='list-style-type: none; margin-left: -15px;'>🔹 <b>")
+                
+                if not html_contenido.strip():
+                    html_contenido = "<p style='color: #64748b; font-style: italic;'>El documento seleccionado está vacío o no contiene texto legible.</p>"
+                
+                # Botón opcional de descarga por si el usuario desea guardarse el original
+                st.download_button(
+                    label="📥 Descargar Word original",
+                    data=z.read(archivo_actual),
+                    file_name=nombre_limpio_pantalla,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                
+                st.markdown(f"""
+                    <div class="contenedor-vista-previa">
+                        {html_contenido}
+                    </div>
+                """, unsafe_allow_html=True)
+                
+    except Exception as err_lectura:
+        st.error(f"No se pudo cargar la vista previa con Mammoth: {str(err_lectura)}")
+else:
+    if not archivos_disponibles:
+        st.error(f"❌ No se detectan archivos de Word (.docx) dentro del paquete '{archivo_zip_actual}'.")
+    else:
+        st.info("👈 Selecciona un archivo de la lista lateral izquierda para ver su contenido.")
