@@ -37,9 +37,9 @@ def convertir_docx_a_html_nativo(datos_bytes):
                 texto_completo = "".join(textos_parrafo).strip()
                 
                 if texto_completo:
-                    # Si el texto está en mayúsculas sostenidas y es corto, lo tratamos como un encabezado principal
+                    # CORREGIDO: Ahora el HTML está correctamente envuelto en un string de Python (f-string)
                     if len(texto_completo) < 100 and (texto_completo.isupper() or "SERVICIO" in texto_completo or "MANTENIMIENTO" in texto_completo):
-                        html_output.append(<h1>{texto_completo}</h1>)
+                        html_output.append(f"<h1>{texto_completo}</h1>")
                     else:
                         html_output.append(f"<p>{texto_completo}</p>")
             
@@ -78,7 +78,6 @@ def explorar_y_renderizar_panel(nombre_zip, titulo_seccion, clave_unica):
                         
                         st.markdown(f'<div class="viewer-title">👁️ Vista Previa de: {nombre_limpio}</div>', unsafe_allow_html=True)
                         
-                        # Botón para descarga opcional del archivo original tal como en tu app previa
                         st.download_button(
                             label="📥 Descargar archivo original",
                             data=datos_archivo,
@@ -89,29 +88,26 @@ def explorar_y_renderizar_panel(nombre_zip, titulo_seccion, clave_unica):
                         
                         ext = archivo_interno.lower()
                         
-                        # Renderizado inmediato de documentos Word (.docx) convirtiéndolos a HTML
                         if ext.endswith('.docx'):
                             html_documento = convertir_docx_a_html_nativo(datos_archivo)
                             st.markdown(f'<div class="document-body">{html_documento}</div>', unsafe_allow_html=True)
                         
-                        # Renderizado de PDFs
                         elif ext.endswith('.pdf'):
                             mostrar_pdf_seguro(datos_archivo)
                         
-                        # Renderizado de Imágenes
                         elif ext.endswith(('.png', '.jpg', '.jpeg')):
                             st.image(datos_archivo, use_container_width=True)
                             
                         else:
-                            st.info("La vista previa en pantalla no está disponible para este formato, pero puedes descargarlo usando el botón superior.")
+                            st.info("La vista previa en pantalla no está disponible para este formato, pero puedes descargarlo.")
                 else:
                     st.info("El archivo comprimido está vacío.")
         except Exception as e:
             st.error(f"Error al abrir el paquete de archivos: {e}")
     else:
-        st.error(f"El archivo '{nombre_zip}' no está disponible en el servidor corporativo.")
+        st.error(f"El archivo '{nombre_zip}' no está disponible en el servidor.")
 
-# Estructura del menú de navegación por pestañas de la aplicación
+# Estructura del menú de navegación por pestañas
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔴 Anillos", "🟠 Prioridad 2", "🟡 Prioridad 3", "🟢 Prioridad 4", "🟣 Prioridad 5", "⚙️ Mecanizado"
 ])
