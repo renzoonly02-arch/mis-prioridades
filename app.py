@@ -1,27 +1,62 @@
 import streamlit as st
 import os
 import zipfile
+import base64
+import xml.etree.ElementTree as ET
 
 st.set_page_config(
-    page_title="Panel de Prioridades",
+    page_title="Buscador y Visor Integrado",
     page_icon="📌",
     layout="wide"
 )
 
+# Estilos idénticos al formato de visor corporativo
 st.markdown("""
     <style>
-    .main-title { color: #0F4C81; font-family: sans-serif; font-weight: bold; text-align: center; margin-bottom: 5px; }
-    .subtitle { color: #555555; text-align: center; font-size: 1.1rem; margin-bottom: 30px; }
-    .prioridad-header { padding: 10px; border-radius: 8px; background-color: #F4F7F9; border-left: 6px solid #0F4C81; margin-top: 20px; }
-    .action-container { background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #E0E0E0; box-shadow: 0 4px 6px rgba(0,0,0,0.02); text-align: center; margin-top: 15px; }
+    .main-title { color: #0F4C81; font-family: sans-serif; font-weight: bold; margin-bottom: 5px; }
+    .subtitle { color: #666666; font-size: 1rem; margin-bottom: 25px; }
+    .viewer-title { background-color: #F4F7F9; padding: 12px; border-radius: 6px; border-left: 5px solid #0F4C81; font-weight: bold; font-size: 1.2rem; color: #1C3D5A; margin-top: 15px; margin-bottom: 15px; }
+    .document-body { background-color: #ffffff; padding: 40px; border-radius: 8px; border: 1px solid #E2E8F0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); font-family: 'Segoe UI', Arial, sans-serif; color: #2D3748; line-height: 1.7; overflow-y: auto; max-height: 700px; }
+    .document-body h1 { color: #1A202C; font-size: 1.8rem; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px; margin-bottom: 15px; text-transform: uppercase; font-weight: bold; }
+    .document-body p { margin-bottom: 12px; font-size: 1.05rem; }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<h1 class="main-title">📌 Panel Interactivo de Documentos</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Explora y abre tus documentos de forma segura en una nueva pestaña del navegador</p>', unsafe_allow_html=True)
+# Extractor y formateador XML para convertir Word (.docx) a HTML plano en pantalla
+def convertir_docx_a_html_nativo(datos_bytes):
+    try:
+        from io import BytesIO
+        with zipfile.ZipFile(BytesIO(datos_bytes)) as docx_zip:
+            xml_content = docx_zip.read('word/document.xml')
+            root = ET.fromstring(xml_content)
+            namespaces = {'w': 'http://openxmlformats.org'}
+            
+            html_output = []
+            for p in root.findall('.//w:p', namespaces):
+                textos_parrafo = [t.text for t in p.findall('.//w:t', namespaces) if t.text]
+                texto_completo = "".join(textos_parrafo).strip()
+                
+                if texto_completo:
+                    # Si el texto está en mayúsculas sostenidas y es corto, lo tratamos como un encabezado principal
+                    if len(texto_completo) < 100 and (texto_completo.isupper() or "SERVICIO" in texto_completo or "MANTENIMIENTO" in texto_completo):
+                        html_output.append(<h1>{texto_completo}</h1>)
+                    else:
+                        html_output.append(f"<p>{texto_completo}</p>")
+            
+            if html_output:
+                return "".join(html_output)
+            return "<p style='color: #718096; italic;'>El documento de Word no contiene texto legible estructurado.</p>"
+    except Exception as e:
+        return f"<p style='color: #E53E3E;'>Error al procesar la estructura interna del documento Word: {e}</p>"
 
-def explorar_y_visualizar_zip(nombre_zip, titulo_seccion, clave_unica):
-    st.markdown(f'<div class="prioridad-header"><h3 style="margin:0; color:#0F4C81;">{titulo_seccion}</h3></div>', unsafe_allow_html=True)
+def mostrar_pdf_seguro(datos_bytes):
+    base64_pdf = base64.b64encode(datos_bytes).decode('utf-8')
+    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="700" type="application/pdf"></iframe>'
+    st.markdown(pdf_display, unsafe_allow_html=True)
+
+def explorar_y_renderizar_panel(nombre_zip, titulo_seccion, clave_unica):
+    st.markdown(f'<h2 class="main-title">📌 {titulo_seccion}</h2>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Explora las subcarpetas de forma automatizada desde el panel de selección.</p>', unsafe_allow_html=True)
     
     if os.path.exists(nombre_zip):
         try:
@@ -30,60 +65,60 @@ def explorar_y_visualizar_zip(nombre_zip, titulo_seccion, clave_unica):
                 
                 if lista_archivos:
                     archivo_interno = st.selectbox(
-                        "📄 Selecciona un documento interno para visualizarlo:",
-                        ["-- Seleccionar archivo --"] + lista_archivos,
+                        "🔍 Selecciona un archivo para desplegar en el visor:",
+                        ["-- Seleccionar documento --"] + lista_archivos,
                         key=f"select_{clave_unica}"
                     )
                     
-                    if archivo_interno != "-- Seleccionar archivo --":
+                    if archivo_interno != "-- Seleccionar documento --":
                         nombre_limpio = os.path.basename(archivo_interno)
-                        st.write(f"**Documento seleccionado:** `{nombre_limpio}`")
                         
                         with z.open(archivo_interno) as archivo_leido:
                             datos_archivo = archivo_leido.read()
                         
-                        ext = archivo_interno.lower()
-                        # Determinar el tipo de contenido adecuado para el navegador
-                        if ext.endswith('.pdf'):
-                            tipo_mime = "application/pdf"
-                        elif ext.endswith('.docx'):
-                            tipo_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        elif ext.endswith('.xlsx'):
-                            tipo_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        elif ext.endswith('.png'):
-                            tipo_mime = "image/png"
-                        elif ext.endswith(('.jpg', '.jpeg')):
-                            tipo_mime = "image/jpeg"
-                        else:
-                            tipo_mime = "application/octet-stream"
+                        st.markdown(f'<div class="viewer-title">👁️ Vista Previa de: {nombre_limpio}</div>', unsafe_allow_html=True)
                         
-                        st.markdown('<div class="action-container">', unsafe_allow_html=True)
-                        st.success(f"¡Archivo '{nombre_limpio}' procesado exitosamente!")
-                        
-                        # Botón nativo de apertura y descarga segura (salta todos los bloqueos de Chrome)
+                        # Botón para descarga opcional del archivo original tal como en tu app previa
                         st.download_button(
-                            label=f"👁️ Ver / Descargar: {nombre_limpio}",
+                            label="📥 Descargar archivo original",
                             data=datos_archivo,
                             file_name=nombre_limpio,
-                            mime=tipo_mime,
-                            key=f"btn_open_{clave_unica}_{nombre_limpio}"
+                            mime="application/octet-stream",
+                            key=f"dl_btn_{clave_unica}_{nombre_limpio}"
                         )
-                        st.markdown('</div>', unsafe_allow_html=True)
+                        
+                        ext = archivo_interno.lower()
+                        
+                        # Renderizado inmediato de documentos Word (.docx) convirtiéndolos a HTML
+                        if ext.endswith('.docx'):
+                            html_documento = convertir_docx_a_html_nativo(datos_archivo)
+                            st.markdown(f'<div class="document-body">{html_documento}</div>', unsafe_allow_html=True)
+                        
+                        # Renderizado de PDFs
+                        elif ext.endswith('.pdf'):
+                            mostrar_pdf_seguro(datos_archivo)
+                        
+                        # Renderizado de Imágenes
+                        elif ext.endswith(('.png', '.jpg', '.jpeg')):
+                            st.image(datos_archivo, use_container_width=True)
+                            
+                        else:
+                            st.info("La vista previa en pantalla no está disponible para este formato, pero puedes descargarlo usando el botón superior.")
                 else:
-                    st.info("El archivo ZIP se encuentra vacío.")
+                    st.info("El archivo comprimido está vacío.")
         except Exception as e:
-            st.error(f"Error al intentar abrir el archivo comprimido: {e}")
+            st.error(f"Error al abrir el paquete de archivos: {e}")
     else:
-        st.error(f"No se encontró el archivo '{nombre_zip}' en el servidor.")
+        st.error(f"El archivo '{nombre_zip}' no está disponible en el servidor corporativo.")
 
-# Pestañas del Panel Corporativo
+# Estructura del menú de navegación por pestañas de la aplicación
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔴 Anillos", "🟠 Prioridad 2", "🟡 Prioridad 3", "🟢 Prioridad 4", "🟣 Prioridad 5", "⚙️ Mecanizado"
 ])
 
-with tab1: explorar_y_visualizar_zip("FABRICACIÓN DE ANILLOS.zip", "Fabricación de Anillos", "p1")
-with tab2: explorar_y_visualizar_zip("PRIORIDAD 2.zip", "Prioridad 2", "p2")
-with tab3: explorar_y_visualizar_zip("PRIORIDAD 3.zip", "Prioridad 3", "p3")
-with tab4: explorar_y_visualizar_zip("PRIORIDAD 4.zip", "Prioridad 4", "p4")
-with tab5: explorar_y_visualizar_zip("PRIORIDAD 5.zip", "Prioridad 5", "p5")
-with tab6: explorar_y_visualizar_zip("SERVICIO DE EMBOCINADO Y MECANIZADO D....zip", "Embocinado y Mecanizado", "p6")
+with tab1: explorar_y_renderizar_panel("FABRICACIÓN DE ANILLOS.zip", "Fabricación de Anillos", "p1")
+with tab2: explorar_y_renderizar_panel("PRIORIDAD 2.zip", "Prioridad 2", "p2")
+with tab3: explorar_y_renderizar_panel("PRIORIDAD 3.zip", "Prioridad 3", "p3")
+with tab4: explorar_y_renderizar_panel("PRIORIDAD 4.zip", "Prioridad 4", "p4")
+with tab5: explorar_y_renderizar_panel("PRIORIDAD 5.zip", "Prioridad 5", "p5")
+with tab6: explorar_y_renderizar_panel("SERVICIO DE EMBOCINADO Y MECANIZADO D....zip", "Embocinado y Mecanizado", "p6")
