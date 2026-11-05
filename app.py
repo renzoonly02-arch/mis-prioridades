@@ -5,140 +5,127 @@ import base64
 import xml.etree.ElementTree as ET
 
 st.set_page_config(
-    page_title="Buscador y Visor Integrado",
+    page_title="Visor Dual de Documentos",
     page_icon="📌",
     layout="wide"
 )
 
-# Estilos idénticos al formato de visor corporativo
+# Estilos corporativos profesionales con fondos limpios
 st.markdown("""
     <style>
-    .main-title { color: #0F4C81; font-family: sans-serif; font-weight: bold; margin-bottom: 5px; }
-    .subtitle { color: #666666; font-size: 1rem; margin-bottom: 25px; }
-    .viewer-title { background-color: #F4F7F9; padding: 12px; border-radius: 6px; border-left: 5px solid #0F4C81; font-weight: bold; font-size: 1.2rem; color: #1C3D5A; margin-top: 15px; margin-bottom: 15px; }
-    .document-body { background-color: #ffffff; padding: 40px; border-radius: 8px; border: 1px solid #E2E8F0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); font-family: 'Segoe UI', Arial, sans-serif; color: #2D3748; line-height: 1.7; overflow-y: auto; max-height: 700px; }
-    .document-body h1 { color: #1A202C; font-size: 1.6rem; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px; margin-bottom: 15px; text-transform: uppercase; font-weight: bold; }
-    .document-body p { margin-bottom: 12px; font-size: 1.05rem; }
-    
-    /* Estilos para tablas de Word extraídas */
+    .main-title { color: #0F4C81; font-family: sans-serif; font-weight: bold; text-align: center; margin-bottom: 5px; }
+    .subtitle { color: #555555; text-align: center; font-size: 1rem; margin-bottom: 25px; }
+    .viewer-title { background-color: #F4F7F9; padding: 10px; border-radius: 6px; border-left: 5px solid #0F4C81; font-weight: bold; font-size: 1.1rem; color: #1C3D5A; margin-bottom: 15px; }
     .word-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.95rem; }
     .word-table td, .word-table th { border: 1px solid #CBD5E1; padding: 10px; vertical-align: top; }
-    .word-table th { background-color: #F8FAFC; font-weight: bold; text-align: left; }
+    .word-table th { background-color: #F8FAFC; font-weight: bold; }
+    .document-body { background-color: #ffffff; padding: 30px; border-radius: 8px; border: 1px solid #E2E8F0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); font-family: 'Segoe UI', Arial, sans-serif; color: #2D3748; line-height: 1.7; overflow-y: auto; max-height: 750px; }
+    .document-body h1 { color: #1A202C; font-size: 1.4rem; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px; margin-bottom: 15px; text-transform: uppercase; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
-# Extractor avanzado XML capaz de leer párrafos Y tablas de Word (.docx)
+st.markdown('<h1 class="main-title">📌 Panel Interactivo Dual</h1>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Visualiza tus documentos de Word y PDF de forma simultánea en la misma pantalla</p>', unsafe_allow_html=True)
+
+# Lector XML para renderizar Word (.docx) como HTML limpio
 def convertir_docx_a_html_nativo(datos_bytes):
     try:
         from io import BytesIO
         with zipfile.ZipFile(BytesIO(datos_bytes)) as docx_zip:
             xml_content = docx_zip.read('word/document.xml')
             root = ET.fromstring(xml_content)
-            namespaces = {
-                'w': 'http://openxmlformats.org'
-            }
-            
+            namespaces = {'w': 'http://openxmlformats.org'}
             html_output = []
-            
-            # Recorremos el cuerpo del documento elemento por elemento (párrafos y tablas)
             body = root.find('.//w:body', namespaces)
             if body is not None:
                 for el in body:
-                    # 1. Si el elemento es un PÁRRAFO
                     if el.tag.endswith('p'):
                         textos_parrafo = [t.text for t in el.findall('.//w:t', namespaces) if t.text]
                         texto_completo = "".join(textos_parrafo).strip()
                         if texto_completo:
-                            if len(texto_completo) < 100 and (texto_completo.isupper() or "SERVICIO" in texto_completo or "MANTENIMIENTO" in texto_completo or "FABRICACIÓN" in texto_completo):
+                            if len(texto_completo) < 120 and (texto_completo.isupper() or "SERVICIO" in texto_completo or "MANTENIMIENTO" in texto_completo or "FABRICACIÓN" in texto_completo):
                                 html_output.append(f"<h1>{texto_completo}</h1>")
                             else:
                                 html_output.append(f"<p>{texto_completo}</p>")
-                    
-                    # 2. Si el elemento es una TABLA (Muy común en planos y registros)
                     elif el.tag.endswith('tbl'):
                         html_output.append('<table class="word-table">')
                         for row in el.findall('.//w:tr', namespaces):
                             html_output.append('<tr>')
                             for cell in row.findall('.//w:tc', namespaces):
-                                # Extraemos el texto de cada celda de la tabla
                                 textos_celda = [t.text for t in cell.findall('.//w:t', namespaces) if t.text]
-                                texto_celda_completo = "".join(textos_celda).strip()
-                                html_output.append(f'<td>{texto_celda_completo}</td>')
+                                html_output.append(f'<td>{"".join(textos_celda).strip()}</td>')
                             html_output.append('</tr>')
                         html_output.append('</table>')
-            
-            if html_output:
-                return "".join(html_output)
-            return "<p style='color: #718096; font-style: italic;'>El documento de Word no contiene texto ni tablas legibles estructuradas.</p>"
-    except Exception as e:
-        return f"<p style='color: #E53E3E;'>Error al procesar la estructura interna del documento Word: {e}</p>"
+            return "".join(html_output) if html_output else "<p>Documento sin texto estructurado.</p>"
+    except:
+        return "<p style='color:red;'>Error al procesar el archivo Word.</p>"
 
+# Visor encapsulado en HTML seguro para evitar los bloqueos de Chrome en PDFs
 def mostrar_pdf_seguro(datos_bytes):
     base64_pdf = base64.b64encode(datos_bytes).decode('utf-8')
-    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="700" type="application/pdf"></iframe>'
-    st.markdown(pdf_display, unsafe_allow_html=True)
+    pdf_html = f"""
+        <iframe src="data:application/pdf;base64,{base64_pdf}" 
+                width="100%" height="730px" 
+                style="border:none; border-radius:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);" 
+                allowfullscreen>
+        </iframe>
+    """
+    st.components.v1.html(pdf_html, height=750, scrolling=False)
 
-def explorar_y_renderizar_panel(nombre_zip, titulo_seccion, clave_unica):
-    st.markdown(f'<h2 class="main-title">📌 {titulo_seccion}</h2>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">Explora las subcarpetas de forma automatizada desde el panel de selección.</p>', unsafe_allow_html=True)
-    
+def explorar_y_renderizar_dual(nombre_zip, titulo_seccion, clave_unica):
     if os.path.exists(nombre_zip):
         try:
             with zipfile.ZipFile(nombre_zip, 'r') as z:
                 lista_archivos = [f for f in z.namelist() if not f.endswith('/') and not f.startswith('__MACOSX')]
                 
                 if lista_archivos:
-                    archivo_interno = st.selectbox(
-                        "🔍 Selecciona un archivo para desplegar en el visor:",
-                        ["-- Seleccionar documento --"] + lista_archivos,
-                        key=f"select_{clave_unica}"
-                    )
+                    # Dividimos la pantalla en 2 columnas para la selección de archivos
+                    col_sel_word, col_sel_pdf = st.columns(2)
                     
-                    if archivo_interno != "-- Seleccionar documento --":
-                        nombre_limpio = os.path.basename(archivo_interno)
-                        
-                        with z.open(archivo_interno) as archivo_leido:
-                            datos_archivo = archivo_leido.read()
-                        
-                        st.markdown(f'<div class="viewer-title">👁️ Vista Previa de: {nombre_limpio}</div>', unsafe_allow_html=True)
-                        
-                        st.download_button(
-                            label="📥 Descargar archivo original",
-                            data=datos_archivo,
-                            file_name=nombre_limpio,
-                            mime="application/octet-stream",
-                            key=f"dl_btn_{clave_unica}_{nombre_limpio}"
-                        )
-                        
-                        ext = archivo_interno.lower()
-                        
-                        if ext.endswith('.docx'):
-                            html_documento = convertir_docx_a_html_nativo(datos_archivo)
-                            st.markdown(f'<div class="document-body">{html_documento}</div>', unsafe_allow_html=True)
-                        
-                        elif ext.endswith('.pdf'):
-                            mostrar_pdf_seguro(datos_archivo)
-                        
-                        elif ext.endswith(('.png', '.jpg', '.jpeg')):
-                            st.image(datos_archivo, use_container_width=True)
-                            
+                    with col_sel_word:
+                        archivos_word = [f for f in lista_archivos if f.lower().endswith('.docx')]
+                        word_seleccionado = st.selectbox("📝 Selecciona el documento WORD:", ["-- Seleccionar Word --"] + archivos_word, key=f"w_{clave_unica}")
+                    
+                    with col_sel_pdf:
+                        archivos_pdf = [f for f in lista_archivos if f.lower().endswith('.pdf')]
+                        pdf_seleccionado = st.selectbox("📄 Selecciona el documento PDF:", ["-- Seleccionar PDF --"] + archivos_pdf, key=f"p_{clave_unica}")
+                    
+                    # Dividimos el espacio de visualización abajo en dos mitades perfectas
+                    col_visor_word, col_visor_pdf = st.columns(2)
+                    
+                    # Columna Izquierda: Visor del Word
+                    with col_visor_word:
+                        st.markdown('<div class="viewer-title">👁️ Vista Previa del Word</div>', unsafe_allow_html=True)
+                        if word_seleccionado != "-- Seleccionar Word --":
+                            with z.open(word_seleccionado) as f_word:
+                                html_word = convertir_docx_a_html_nativo(f_word.read())
+                            st.markdown(f'<div class="document-body">{html_word}</div>', unsafe_allow_html=True)
                         else:
-                            st.info("La vista previa en pantalla no está disponible para este formato, pero puedes descargarlo.")
+                            st.info("Selecciona un archivo Word en el menú de arriba para leerlo aquí.")
+                            
+                    # Columna Derecha: Visor del PDF
+                    with col_visor_pdf:
+                        st.markdown('<div class="viewer-title">👁️ Vista Previa del PDF</div>', unsafe_allow_html=True)
+                        if pdf_seleccionado != "-- Seleccionar PDF --":
+                            with z.open(pdf_seleccionado) as f_pdf:
+                                mostrar_pdf_seguro(f_pdf.read())
+                        else:
+                            st.info("Selecciona un archivo PDF en el menú de arriba para proyectarlo aquí.")
                 else:
                     st.info("El archivo comprimido está vacío.")
         except Exception as e:
-            st.error(f"Error al abrir el paquete de archivos: {e}")
+            st.error(f"Error al abrir el paquete: {e}")
     else:
-        st.error(f"El archivo '{nombre_zip}' no está disponible en el servidor.")
+        st.error(f"El paquete '{nombre_zip}' no está disponible.")
 
-# Estructura de pestañas
+# Estructura de Pestañas Principales por áreas de prioridad
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔴 Anillos", "🟠 Prioridad 2", "🟡 Prioridad 3", "🟢 Prioridad 4", "🟣 Prioridad 5", "⚙️ Mecanizado"
 ])
 
-with tab1: explorar_y_renderizar_panel("FABRICACIÓN DE ANILLOS.zip", "Fabricación de Anillos", "p1")
-with tab2: explorar_y_renderizar_panel("PRIORIDAD 2.zip", "Prioridad 2", "p2")
-with tab3: explorar_y_renderizar_panel("PRIORIDAD 3.zip", "Prioridad 3", "p3")
-with tab4: explorar_y_renderizar_panel("PRIORIDAD 4.zip", "Prioridad 4", "p4")
-with tab5: explorar_y_renderizar_panel("PRIORIDAD 5.zip", "Prioridad 5", "p5")
-with tab6: explorar_y_renderizar_panel("SERVICIO DE EMBOCINADO Y MECANIZADO D....zip", "Embocinado y Mecanizado", "p6")
+with tab1: explorar_y_renderizar_dual("FABRICACIÓN DE ANILLOS.zip", "Fabricación de Anillos", "p1")
+with tab2: explorar_y_renderizar_dual("PRIORIDAD 2.zip", "Prioridad 2", "p2")
+with tab3: explorar_y_renderizar_dual("PRIORIDAD 3.zip", "Prioridad 3", "p3")
+with tab4: explorar_y_renderizar_dual("PRIORIDAD 4.zip", "Prioridad 4", "p4")
+with tab5: explorar_y_renderizar_dual("PRIORIDAD 5.zip", "Prioridad 5", "p5")
+with tab6: explorar_y_renderizar_dual("SERVICIO DE EMBOCINADO Y MECANIZADO D....zip", "Embocinado y Mecanizado", "p6")
