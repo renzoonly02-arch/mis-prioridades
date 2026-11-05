@@ -17,35 +17,59 @@ st.markdown("""
     .subtitle { color: #666666; font-size: 1rem; margin-bottom: 25px; }
     .viewer-title { background-color: #F4F7F9; padding: 12px; border-radius: 6px; border-left: 5px solid #0F4C81; font-weight: bold; font-size: 1.2rem; color: #1C3D5A; margin-top: 15px; margin-bottom: 15px; }
     .document-body { background-color: #ffffff; padding: 40px; border-radius: 8px; border: 1px solid #E2E8F0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); font-family: 'Segoe UI', Arial, sans-serif; color: #2D3748; line-height: 1.7; overflow-y: auto; max-height: 700px; }
-    .document-body h1 { color: #1A202C; font-size: 1.8rem; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px; margin-bottom: 15px; text-transform: uppercase; font-weight: bold; }
+    .document-body h1 { color: #1A202C; font-size: 1.6rem; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px; margin-bottom: 15px; text-transform: uppercase; font-weight: bold; }
     .document-body p { margin-bottom: 12px; font-size: 1.05rem; }
+    
+    /* Estilos para tablas de Word extraídas */
+    .word-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.95rem; }
+    .word-table td, .word-table th { border: 1px solid #CBD5E1; padding: 10px; vertical-align: top; }
+    .word-table th { background-color: #F8FAFC; font-weight: bold; text-align: left; }
     </style>
 """, unsafe_allow_html=True)
 
-# Extractor y formateador XML para convertir Word (.docx) a HTML plano en pantalla
+# Extractor avanzado XML capaz de leer párrafos Y tablas de Word (.docx)
 def convertir_docx_a_html_nativo(datos_bytes):
     try:
         from io import BytesIO
         with zipfile.ZipFile(BytesIO(datos_bytes)) as docx_zip:
             xml_content = docx_zip.read('word/document.xml')
             root = ET.fromstring(xml_content)
-            namespaces = {'w': 'http://openxmlformats.org'}
+            namespaces = {
+                'w': 'http://openxmlformats.org'
+            }
             
             html_output = []
-            for p in root.findall('.//w:p', namespaces):
-                textos_parrafo = [t.text for t in p.findall('.//w:t', namespaces) if t.text]
-                texto_completo = "".join(textos_parrafo).strip()
-                
-                if texto_completo:
-                    # CORREGIDO: Ahora el HTML está correctamente envuelto en un string de Python (f-string)
-                    if len(texto_completo) < 100 and (texto_completo.isupper() or "SERVICIO" in texto_completo or "MANTENIMIENTO" in texto_completo):
-                        html_output.append(f"<h1>{texto_completo}</h1>")
-                    else:
-                        html_output.append(f"<p>{texto_completo}</p>")
+            
+            # Recorremos el cuerpo del documento elemento por elemento (párrafos y tablas)
+            body = root.find('.//w:body', namespaces)
+            if body is not None:
+                for el in body:
+                    # 1. Si el elemento es un PÁRRAFO
+                    if el.tag.endswith('p'):
+                        textos_parrafo = [t.text for t in el.findall('.//w:t', namespaces) if t.text]
+                        texto_completo = "".join(textos_parrafo).strip()
+                        if texto_completo:
+                            if len(texto_completo) < 100 and (texto_completo.isupper() or "SERVICIO" in texto_completo or "MANTENIMIENTO" in texto_completo or "FABRICACIÓN" in texto_completo):
+                                html_output.append(f"<h1>{texto_completo}</h1>")
+                            else:
+                                html_output.append(f"<p>{texto_completo}</p>")
+                    
+                    # 2. Si el elemento es una TABLA (Muy común en planos y registros)
+                    elif el.tag.endswith('tbl'):
+                        html_output.append('<table class="word-table">')
+                        for row in el.findall('.//w:tr', namespaces):
+                            html_output.append('<tr>')
+                            for cell in row.findall('.//w:tc', namespaces):
+                                # Extraemos el texto de cada celda de la tabla
+                                textos_celda = [t.text for t in cell.findall('.//w:t', namespaces) if t.text]
+                                texto_celda_completo = "".join(textos_celda).strip()
+                                html_output.append(f'<td>{texto_celda_completo}</td>')
+                            html_output.append('</tr>')
+                        html_output.append('</table>')
             
             if html_output:
                 return "".join(html_output)
-            return "<p style='color: #718096; italic;'>El documento de Word no contiene texto legible estructurado.</p>"
+            return "<p style='color: #718096; font-style: italic;'>El documento de Word no contiene texto ni tablas legibles estructuradas.</p>"
     except Exception as e:
         return f"<p style='color: #E53E3E;'>Error al procesar la estructura interna del documento Word: {e}</p>"
 
@@ -107,7 +131,7 @@ def explorar_y_renderizar_panel(nombre_zip, titulo_seccion, clave_unica):
     else:
         st.error(f"El archivo '{nombre_zip}' no está disponible en el servidor.")
 
-# Estructura del menú de navegación por pestañas
+# Estructura de pestañas
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔴 Anillos", "🟠 Prioridad 2", "🟡 Prioridad 3", "🟢 Prioridad 4", "🟣 Prioridad 5", "⚙️ Mecanizado"
 ])
